@@ -1,3 +1,6 @@
+require 'scraperwiki'
+require 'mechanize'
+
 class MelbAuctResults
   include Enumerable
 
@@ -11,6 +14,7 @@ class MelbAuctResults
 
   def each
     ('A'..'Z').map do |letter|
+      print letter
       page = agent.get("http://www.realestateview.com.au/propertydata/auction-results/victoria/#{letter}")
       if (x = page.at('div.pd-table'))
         suburb_names = x.xpath("//div[@class='pd-content-heading-dark']").map { |n|
@@ -35,7 +39,7 @@ class MelbAuctResults
   end
 
   def save
-    ScraperWiki.save_sqlite(%w(sale_date address suburb).map(&:to_sym), to_a)
+    ::ScraperWiki.save_sqlite(%w(sale_date address suburb).map(&:to_sym), to_a)
   end
 end
 
