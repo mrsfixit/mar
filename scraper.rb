@@ -1,24 +1,46 @@
-# This is a template for a Ruby scraper on Morph (https://morph.io)
-# including some code snippets below that you should find helpful
+require 'scraperwiki'
+require 'mechanize'
 
-# require 'scraperwiki'
-# require 'mechanize'
-#
-# agent = Mechanize.new
-#
-# # Read in a page
-# page = agent.get("http://foo.com")
-#
-# # Find somehing on the page using css selectors
-# p page.at('div.content')
-#
-# # Write out to the sqlite database using scraperwiki library
-# ScraperWiki.save_sqlite(["name"], {"name" => "susan", "occupation" => "software developer"})
-#
-# # An arbitrary query against the database
-# ScraperWiki.select("* from data where 'name'='peter'")
+class MelbAuctResults
+  include Enumerable
 
-# You don't have to do things with the Mechanize or ScraperWiki libraries. You can use whatever gems are installed
-# on Morph for Ruby (https://github.com/openaustralia/morph-docker-ruby/blob/master/Gemfile) and all that matters
-# is that your final data is written to an Sqlite database called data.sqlite in the current working directory which
-# has at least a table called data.
+  def cols
+    @cols ||= %i(address beds_s price_s type method sale_date agent)
+  end
+
+  def agent
+    @agent ||= Mechanize.new
+  end
+
+  def each
+    ('A'..'Z').map do |letter|
+      print letter
+      page = agent.get("http://www.realestateview.com.au/propertydata/auction-results/victoria/#{letter}")
+      if (x = page.at('div.pd-table'))
+        suburb_names = x.xpath("//div[@class='pd-content-heading-dark']").map { |n|
+          n.text.strip[/^(.*) Sales & Auction Results$/, 1]
+        }
+        suburb = nil
+        x.xpath("//div[@class='pd-table']/*/*/tr").map { |n0|
+          n0.xpath('td').map { |n| n.text.gsub(/[[:space:]]+/, ' ').strip }.compact
+        }.inject({}) { |h, result|
+          if result.empty?
+            suburb = suburb_names.shift
+          else
+            h = Hash[cols.zip(result)].merge(suburb: suburb)
+            h[:beds] = h[:beds_s].to_i
+            h[:price] = h[:price_s].gsub(/[^\d]/, '').to_i
+            h[:sale_date] = Date.parse(h[:sale_date])
+            yield h
+          end
+        }
+      end
+    end
+  end
+
+  def save
+    ScraperWiki.save_sqlite(%i(sale_date address suburb), to_a)
+  end
+end
+
+MelbAuctResults.new.save
